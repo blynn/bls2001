@@ -1,0 +1,166 @@
+Thu May 10 17:22:23 PDT 2001
+
+Original version(s) too slow, consulted Dan and Victor, and they came up
+with fast way to do it. (Pick random element, find its trace and then
+compute its min. poly.; don't start from a min. poly.)
+
+Problem with char 3: can't use Cardano's formula because can't divide by
+3. But cube roots are easy, and sqrt(-1) can be found easily too.
+
+Fri May 11 14:38:09 PDT 2001
+
+Simple test program in place.
+One Weil pairing takes about 3 minutes :(
+(To verify signature ~ 5 minutes)
+Can't think of an easy way to improve this much.
+
+Mon May 14 16:59:49 PDT 2001
+
+As usual I'm wrong. Turns out most of the time is being spent in FindRoot,
+which I can avoid by using Tonelli's for example, and working in F_3l.
+
+Weil pairing still takes 30 secs. _Maybe_ get it down to 1 sec by
+following Victor's suggestion: implement dedicated F_3^6 class (arithmetic
+with table lookups) and then F_3^6l on top of this. A lot of work though...
+
+Started dedicated classes F3k, F3kl.
+
+Tue May 15 13:40:27 PDT 2001
+
+For future reference: I use two integers to represent an element of
+F_3^6, one is a binary encoding of where the 1's go, and the other is
+a binary encoding of where the 2's go, e.g.
+012011 --> 010011, 001000 = 19, 8
+Then addition is a sequence of boolean operations.
+Victor had a different suggestion:
+a+b = a(1+a^-1b), keep numbers as discrete logs,
+and have a table for log(1+g^x) and one for negation. It might be faster,
+as now addition is: inverse, add, table lookup, add (with some reductions
+in there), and an element is stored as a single integer instead of two.
+
+Some other tricks he told me: preconditioning multiplication, using the
+fact that f has coefficients in F_3 during multiplication. Pick a sparse
+polynomial. Horner's rule in poly mult + reduction.
+
+Not much progress today. Implemented divrem, egcd, div. Ready to write new
+weil.cc
+
+Wed May 16 16:49:00 PDT 2001
+
+A note on Tonelli's algorithm: since q = 3^6*l for odd l, we can show
+8 divides q-1, but 16 doesn't (take difference of two squares; one is 2 mod 4
+and the other is 4 mod 8).
+
+Implemented Tonelli's algorithm, power.
+
+Changed weil.cc. Many annoying bug fixes before I could get it to work.
+Usually got ``assembly code'' wrong.
+Takes 2 seconds per miller() now.
+
+Thu May 17 13:15:21 PDT 2001
+
+Modified genminpoly to find the "simplest" irreducible degree 79 polynomial,
+and mul() to take advantage of this. Shaves off over half a second off every
+miller().
+
+Fri May 18 15:18:40 PDT 2001
+
+Changed F3k class to Victor's idea. It's faster by over half a second per
+miller() (roughly 0.75 seconds = 3 seconds for verification).
+
+To get more speed, could get rid of class and use ints only.
+
+Wed May 23 21:09:38 PDT 2001
+
+Added other 6 cases to program. Ready to generate results for paper, though
+I should implement Tate pairing first.
+Fixed group_times so that you can do group_times(P, a, P).
+
+Thu May 24 13:43:45 PDT 2001
+
+Slight modifications to measure verification times:
+One very minor optimization: precompute constant x replacepoly
+(Close most windows for these times)
+
+0: 2.90
+1: 5.09
+2: 7.86
+3: 16.75
+4: 23.43
+5: 23.69
+6: 24.74
+
+Fixed bug in random_special: forgot that SetCoeff doesn't update degree
+properly if coeff = 0. Made it more efficient.
+
+Randomized sig.cc, renamed to testweil.cc
+
+[sss-0.01.tgz]
+
+Sat May 26 02:06:58 PDT 2001
+
+SSS can be used in real situations now, though it is a bit rough around the
+edges. Library in place, could rewrite testweil to use it.
+
+Tue May 29 13:11:03 PDT 2001
+
+Changed sss_lib.cc so it's easy to modify code to use different bases when
+outputting the signature. I experimented with base-64 but decided that the
+extra digits saved aren't worth the hassle of typing in lowercase and uppercase
+letters.
+
+Should get rid of testweil? test.cc + sss_lib.cc already does it's job?
+
+[sss-0.02.tgz]
+
+Wed Sep 19 14:10:13 PDT 2001
+
+Renamed testweil.cc to benchmark.cc.
+
+Last night added a loop so it runs the signature verification algorithm
+10 times and computes the average running time.
+
+I prefer using benchmark.cc to test.cc because although it is messier and
+doesn't use sss_lib, it does not depend on OpenSSL and it's more convenient
+to pick random points rather than hash random messages.
+
+Added Tate pairing. Significantly faster (about 30%).
+
+Wed Sep 19 21:19:35 PDT 2001
+
+New table of running times:
+
+0: 1.85
+1: 3.24
+2: 5.38
+3: 11.05
+4: 15.14
+5: 15.26
+6: 16.00
+
+Thu Sep 20 00:48:43 PDT 2001
+
+I thought of a trick that I can use to slightly speed things up now that
+the Tate pairing is being used. Unlike IBE, we don't want something "standard"
+from the output of the Tate pairing; we just want to know if two things are
+in the same coset. This can be done with one multiplication and one
+exponentiation (and comparing against one), because:
+
+let a = tate_pairing(P, S), b = tate_pairing(H(m), xP) (I've omitted Phi's).
+
+Then a^k = b^k <==> (a/b)^k = 1.
+But 1/b can be easily computed by finding tate_pairing(H(m), -xP)
+(by bilinearity) hence we have replaced an exponentiation with a
+multiplication.
+
+Unfortunately this voids my other trick for point compression; if we guess
+the wrong choice for y, it'll cost another exponentiation. So it looks like
+I'll have to throw in an extra bit after all. I can't be bothered implementing
+this in sss_lib so only benchmark.cc has the changes.
+
+Mon Jan 14 23:05:09 PST 2002
+
+I never recorded the times given in the paper in this file.
+
+I just noticed I don't take advantage of the fact that we're in char 3.
+e.g. slope_tangent, group_plus.
